@@ -18,6 +18,7 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -45,24 +46,13 @@ class MyPrintDocumentAdapter extends PrintDocumentAdapter {
         // Respond to cancellation request
         if (cancellationSignal.isCanceled() ) {
             callback.onLayoutCancelled();
-            return;
-        }
-
-        // Compute the expected number of printed pages
-        int pages = computePageCount(newAttributes);
-
-        if (pages > 0) {
-            // Return print information to print framework
-            PrintDocumentInfo info = new PrintDocumentInfo
-                    .Builder("print_output.pdf")
-                    .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
-                    .setPageCount(pages)
+        }else {
+            PrintDocumentInfo.Builder builder = new PrintDocumentInfo.Builder("file_name");
+            builder.setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                    .setPageCount(PrintDocumentInfo.PAGE_COUNT_UNKNOWN)
                     .build();
-            // Content layout reflow is complete
-            callback.onLayoutFinished(info, true);
-        } else {
             // Otherwise report an error to the print framework
-            callback.onLayoutFailed("Page count calculation failed.");
+            callback.onLayoutFailed("calcolo delle pagine a puttane");
         }
 
     }
@@ -72,41 +62,44 @@ class MyPrintDocumentAdapter extends PrintDocumentAdapter {
                         final ParcelFileDescriptor destination,
                         final CancellationSignal cancellationSignal,
                         final WriteResultCallback callback) {
+        // Iterate over each page of the document,
+        // check if it's in the output range.
+        InputStream  in = null;
+        OutputStream out = null;
+        try{
+            File file = new File(path);
+            in = new FileInputStream(file);
+            out = new FileOutputStream(destination.getFileDescriptor());
 
-        InputStream input = null;
-        OutputStream output = null;
-        try {
-            input = new FileInputStream(new File("somefile.pdf"));
-            output = new FileOutputStream(destination.getFileDescriptor());
-            byte[] buf = new byte[1024];
-            int bytesRead;
-            while ((bytesRead = input.read(buf)) > 0) {
-                output.write(buf, 0, bytesRead);
+            byte[] buff = new byte[16384];
+            int size;
+            while ((size = in.read(buff))>= 0 && !cancellationSignal.isCanceled()){
+                out.write(buff,0,size);
             }
-
-            if(cancellationSignal.isCanceled())
+            if (cancellationSignal.isCanceled())
                 callback.onWriteCancelled();
-            else{
-                callback.onWriteFinished(new PageRange[]{
-                        PageRange.ALL_PAGES
-                });
+            else {
+                callback.onWriteFinished(new PageRange[]{PageRange.ALL_PAGES});
             }
+
+
+
 
         } catch (Exception e) {
             callback.onWriteFailed(e.getMessage());
             Log.e("Bro", e.getMessage());
             e.printStackTrace();
-
-        } finally {
-            try {
-                input.close();
-                output.close();
-            } catch (IOException e) {
-                Log.e("Bro", e.getMessage());
-                e.printStackTrace();
+        }
+        finally {
+            try{
+                in.close();
+                out.close();
+            }catch (IOException ex){
+                Log.e("Bro", "" + ex.getMessage());
             }
         }
 
+        callback.onWriteFinished(pageRanges);
     }
 
 
@@ -121,19 +114,5 @@ class MyPrintDocumentAdapter extends PrintDocumentAdapter {
         super.onFinish();
     }
 
-    private int computePageCount(PrintAttributes printAttributes) {
-        int itemsPerPage = 4; // default item count for portrait mode
-        // default item count for portrait mode
 
-        PrintAttributes.MediaSize pageSize = printAttributes.getMediaSize();
-        if (!pageSize.isPortrait()) {
-            // Six items per page in landscape orientation
-            itemsPerPage = 6;
-        }
-
-        // Determine number of print items
-        int printItemCount = 1;
-
-        return (int) Math.ceil(printItemCount / itemsPerPage);
-    }
 }
